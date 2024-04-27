@@ -21,3 +21,6 @@ lib/foundry-devops/
 
 #Open Zeppelin contracts
 lib/openzeppelin-contracts
+
+#Ignore sc-explots-minimized
+lib/sc-exploits-minimized

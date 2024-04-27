@@ -98,3 +98,68 @@ For example:
   - Add 498 USDC and 502.06 USDC = 1000.06 USDC
   - The difference over 1000 is the profit made by the LP = 0.06 USDC (because that starting base was 500 and we worked the difference between the two values)
 - The profit of 0.06 USDC is from a single swap/trade. The more swaps and trades that occur, the greater the profits the LP can make without having to do anything! --> This is yield
+
+![AMM Demo With Smart Contracts Showing Interaction](notes_img/t-swap-with-factory.png)
+
+## Invariants & Properties
+
+**Went through and re-created some fuzzing and stateful fuzzing (invariant) tests in the `sc-exploits-minimized` folder, I have brought them into the `./src` and `./test` folders of this structure for future reference - highly reccomend reading them. Have also updated `foundry.toml`**
+
+We have gone over some of this previosuly, but to quickly re-hash it:
+
+Invariants & properties are statements about the protocl that must always be true, regardless of what state changes occur.
+
+For example, an invariant of a protocol that held tokens on someones behalf, an invariant of the system would be that a user cannot withdraw more tokens than they deposited. If there is a way for this invariant to be incorrect, then there is a bug in the system.
+
+[crytic/properties](https://github.com/crytic/properties?tab=readme-ov-file) is a repository detailing a number of properties across common ERC standards and includes useful information on carrying out tests regarding these.
+
+### Where Stateless Fuzzing Falls Down
+
+Stateless fuzzing falls down when an anvairant or a property of a system requires interactions across different functions and steps.
+
+Because normal fuzzing does not care about any previous run/attempt and it resets everytime, we do not have a series of changes that have occured to the state that can be maintained prior to testing more logic that can potentially cause the invariant to break.
+
+### Stateful Fuzzing with Foundry
+
+There are two main methods of carrying out some more targetted and somtimes more useful kinds of fuzzing.
+
+**Method 1 - Open Stateful Fuzzing**
+
+- We adjust our fuzzing configuration in `foundry.toml` where we can control:
+  -  whether to fail on revert, or continue testing. Both options are valid and useful in varying situations.
+     -  If our invariant is a rule that won't cause a revert in the logic, then we would set fail on revert as `false`
+     -  Need to be careful too though, because what about failure of token transfers for example? There could be a revert and we want that revert there to happen to let us know
+  -  How many runs of tests to do
+  -  Depth of testing - the number of functions to call inside of each run
+- We can also use `StdInvariant` of Foundry to give us some useful tools for more advanced stateful fuzzing - such as creating a target contract for the fuzzing test to call random functions of with random inputs.
+- When we write a stateful fuzz test in Foundry, we pre-append the test with the either the keyword `invariant_` or `statefulFuzz_` prior to the rest of the test name
+- It's important to note that inside of these invariant tests, we have an assertion that is checked after each run of the test
+- Remember aswell that ALL public functions autoamtically have getter functions
+
+
+**Method 2 - Handler for Stateful Fuzzing**
+
+- Using a Handler contract for our fuzzing allows us to steer and control certain aspects of the state and values being supplied for the stateful fuzz tests
+  - For example, if certain internal functions can only be called when an external functions receives a valid input, such as a user address, or a token address that a function takes to check if its accepted or to handle balance updates - if we don't allow or bound the paramters in some way we can be too loose and not precise enough for the depth of testing that we would actually like and can be wasting time and paths
+
+- Handler contract can be used to direct the fuzzer to certain order of operations with some control of values if required, and even though this reduces randomness, if its known that only 1 value out of something like 2^256-1 will allow the function to continue without reverting to impact the state of the protocl - then it is worth not wasting the time testing all the rest of the values and instead actually spend the time trying to break invariants using data that is less random but way more useful
+
+## Weird ERC20s
+
+Weird ERC20 tokens pose one of the biggest risks to web3 security. Weird ERC20 tokens are tokens that have unexpected or surprising behaviours.
+
+The [d-xo/weird-erc20](https://github.com/d-xo/weird-erc20) repository contains informaiton about weird ERC20 tokens, and files that demonstrate some strange behaviours that are present in the wild.
+
+In this repo, they provide the following statement regarding ERC20:
+>The ERC20 "specification" is so loosely defined that it amounts to little more than an interface declaration, and even the few semantic requirements that are imposed are routinely violated by token developers in the wild.
+
+This highlights the importance of being aware of these and making some good premedative decisions around your protocl design. They follow on the last statement about the ERC20 specification with the following:
+>This makes building smart contracts that interface directly with ERC20 tokens challenging to say the least, and smart contract developers should in general default to the following patterns when interaction with external code is required:
+>
+>1. A contract level allowlist of known good tokens.
+>2. Direct interaction with tokens should be performed in dedicated wrapper contracts at the edge of the system. This allows the core to assume a consistent and known good semantics for the behaviour of external assets.
+>
+>In some cases the above patterns are not practical (for example in the case of a permissionless AMM, keeping an on chain allowlist would require the introduction of centralized control or a complex governance system), and in these cases developers must take great care to make these interactions in a highly defensive manner. It should be noted that even if an onchain allowlist is not feasible, an offchain allowlist in the official UI can also protect unsophisticated users from tokens that violate the contracts expectations, while still preserving contract level permissionlessness.
+
+## Constant Product Formula Explained
+
